@@ -47,10 +47,10 @@ from cnns.nnlib.utils.general_utils import NetworkType
 
 # from memory_profiler import profile
 
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
-consoleLog = logging.StreamHandler()
-logger.addHandler(consoleLog)
+#logger = logging.getLogger(__name__)
+#logger.setLevel(logging.DEBUG)
+#consoleLog = logging.StreamHandler()
+#logger.addHandler(consoleLog)
 
 current_file_name = __file__.split("/")[-1].split(".")[0]
 
@@ -76,14 +76,14 @@ from apex.fp16_utils import FP16_Optimizer
 dir_path = os.path.dirname(os.path.realpath(__file__))
 # print("current working directory: ", dir_path)
 
-ucr_data_folder = "TimeSeriesDatasets"
-# ucr_path = os.path.join(dir_path, os.pardir, data_folder)
-ucr_path = os.path.join(os.pardir, os.pardir, ucr_data_folder)
+#ucr_data_folder = "TimeSeriesDatasets"
+#ucr_path = os.path.join(dir_path, os.pardir, data_folder)
+#ucr_path = os.path.join(os.pardir, os.pardir, ucr_data_folder)
 
-results_folder_name = "results"
-results_dir = os.path.join(os.getcwd(), results_folder_name)
-print("current dir: ", os.getcwd())
-pathlib.Path(results_dir).mkdir(parents=True, exist_ok=True)
+#results_folder_name = "results"
+#results_dir = os.path.join(os.getcwd(), results_folder_name)
+#print("current dir: ", os.getcwd())
+#pathlib.Path(results_dir).mkdir(parents=True, exist_ok=True)
 # if not os.path.exists(results_dir):
 #     os.makedirs(results_dir)
 
@@ -98,8 +98,8 @@ pathlib.Path(models_dir).mkdir(parents=True, exist_ok=True)
 
 args = get_args()
 
-current_file_name = __file__.split("/")[-1].split(".")[0]
-print("current file name: ", current_file_name)
+#current_file_name = __file__.split("/")[-1].split(".")[0]
+#print("current file name: ", current_file_name)
 
 if torch.cuda.is_available() and args.use_cuda:
     print("cuda is available: ")
@@ -172,88 +172,6 @@ def getData(fname):
 
     return x_train, y_train, x_test, y_test, batch_size, num_classes
 
-
-# @profile
-def train(model, device, train_loader, optimizer, loss_function, epoch, args):
-    """
-    Train the model.
-
-    :param model: deep learning model.
-    :param device: cpu or gpu.
-    :param train_loader: the training dataset.
-    :param optimizer: Adam, Momemntum, etc.
-    :param epoch: the current epoch number.
-    :param
-    """
-
-    model.train()
-    train_loss = 0
-    correct = 0
-    total = 0
-
-    for batch_idx, (data, target) in enumerate(train_loader):
-        # fp16 (apex) - the data is cast explicitely to fp16 via data.to() method.
-        data, target = data.to(device=device, dtype=args.dtype), target.to(
-            device=device)
-        optimizer.zero_grad()
-        output = model(data)
-        loss = loss_function(output, target)
-
-        # The cross entropy loss combines `log_softmax` and `nll_loss` in
-        # a single function.
-        # loss = F.cross_entropy(output, target)
-
-        if args.precision_type is PrecisionType.AMP:
-            """
-            https://github.com/NVIDIA/apex/tree/master/apex/amp
-            
-            Not used: at each optimization step in the training loop, 
-            perform the following:
-            Cast gradients to FP32. If a loss was scaled, descale the 
-            gradients. Apply updates in FP32 precision and copy the updated 
-            parameters to the model, casting them to FP16.
-            """
-            with amp_handle.scale_loss(loss, optimizer) as scaled_loss:
-                scaled_loss.backward()
-            # loss = optimizer.scale_loss(loss)
-
-        elif args.precision_type is PrecisionType.FP16:
-            optimizer.backward(loss)
-        elif args.precision_type is PrecisionType.FP32:
-            loss.backward()
-        else:
-            raise Exception(
-                f"Unsupported precision type for float16: {args.precision_type}")
-
-        optimizer.step()
-
-        # print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
-        #     epoch, batch_idx * len(data), len(train_loader.dataset),
-        #            100.0 * batch_idx / len(train_loader), loss.item()))
-
-        train_loss += loss.item()
-        _, predicted = output.max(1)
-        total += target.size(0)
-        correct += predicted.eq(target).sum().item()
-
-        if args.log_conv_size is True:
-            with open(additional_log_file, "a") as file:
-                file.write("\n")
-
-        if args.is_progress_bar:
-            progress_bar(total, len(train_loader.dataset), epoch=epoch,
-                         msg="Train Loss: %.3f | Train Acc: %.3f%% (%d/%d)" %
-                             (train_loss / total, 100. * correct / total,
-                              correct,
-                              total))
-
-    # Test loss for the whole dataset.
-    train_loss /= total
-    accuracy = 100. * correct / total
-
-    return train_loss, accuracy
-
-
 def test(model, device, test_loader, loss_function, args, epoch=None):
     """
     Test the model and return test loss and accuracy.
@@ -324,13 +242,6 @@ def test(model, device, test_loader, loss_function, args, epoch=None):
 
         return test_loss, accuracy
 
-
-def save_checkpoint(state, is_best, filename='checkpoint.pth.tar'):
-    torch.save(state, filename)
-    if is_best:
-        shutil.copyfile(filename, 'model_best.pth.tar')
-
-
 # @profile
 def main(args):
     """
@@ -338,40 +249,10 @@ def main(args):
 
     :param dataset_name: the name of the dataset from UCR.
     """
-    is_debug = args.is_debug
+
     dataset_name = args.dataset_name
     preserve_energy = args.preserve_energy
     compress_rate = args.compress_rate
-
-    DATASET_HEADER = HEADER + ",dataset," + str(dataset_name) + \
-                     "-current-preserve-energy-" + str(preserve_energy) + "\n"
-
-    if args.test_compress_rates:
-        dataset_log_file = os.path.join(results_folder_name,
-                                        f"{args.dataset}-dataset-compress-rates.log")
-    else:
-        dataset_log_file = os.path.join(
-            results_folder_name,
-            get_log_time() + "-dataset-" + str(dataset_name) + \
-            "-preserve-energy-" + str(preserve_energy) + \
-            "-compress-rate-" + str(compress_rate) + \
-            ".log")
-        with open(dataset_log_file, "a") as file:
-            # Write the metadata.
-            file.write(DATASET_HEADER)
-            # Write the header with the names of the columns.
-            file.write(
-                "epoch,train_loss,train_accuracy,dev_loss,dev_accuracy,"
-                "test_loss,test_accuracy,epoch_time,learning_rate,"
-                "train_time,test_time,compress_rate\n")
-
-    # with open(os.path.join(results_dir, additional_log_file), "a") as file:
-    #     # Write the metadata.
-    #     file.write(DATASET_HEADER)
-
-    with open(os.path.join(results_dir, mem_log_file), "a") as file:
-        # Write the metadata.
-        file.write(DATASET_HEADER)
 
     torch.manual_seed(args.seed)
     optimizer_type = args.optimizer_type
@@ -537,16 +418,15 @@ def main(args):
                     args.compress_rate) + "\n")
         return
 
+    """
     dataset_start_time = time.time()
     dev_loss = min_dev_los = sys.float_info.max
     dev_accuracy = 0.0
+    
     for epoch in range(args.start_epoch, args.epochs + 1):
         epoch_start_time = time.time()
         # print("\ntrain:")
-        if args.log_conv_size is True:
-            with open(additional_log_file, "a") as file:
-                file.write(str(args.compress_rate) + ",")
-        train_start_time = time.time()
+        #train_start_time = time.time()
         train_loss, train_accuracy = train(
             model=model, device=device, train_loader=train_loader, args=args,
             optimizer=optimizer, loss_function=loss_function, epoch=epoch)
@@ -628,42 +508,22 @@ def main(args):
             max_dev_accuracy) + "," + str(min_test_loss) + "," + str(
             max_test_accuracy) + "," + str(
             time.time() - dataset_start_time) + "\n")
-    test_time = time.time()
-    test(model = model, device = device, test_loader = test_loader, loss_function = loss_function, args = args)
-    print("test time", time.time() - test_time)
+    """
+    def inference_function(model, data):
+        test_time = time.time()
+        print("test time", time.time() - test_time)
+
+    
+    
 
 if __name__ == '__main__':
-    print("start learning!")
-    start_time = time.time()
+   # print("start learning!")
+   # start_time = time.time()
     hostname = socket.gethostname()
     cuda_visible_devices = os.environ['CUDA_VISIBLE_DEVICES']
-    global_log_file = os.path.join(results_folder_name,
-                                   get_log_time() + "-ucr-fcnn.log")
+   # global_log_file = os.path.join(results_folder_name,
+    #                               get_log_time() + "-ucr-fcnn.log")
     args_str = args.get_str()
-    HEADER = "hostname," + str(
-        hostname) + ",timestamp," + get_log_time() + "," + str(
-        args_str) + ",cuda_visible_devices," + str(cuda_visible_devices)
-    with open(additional_log_file, "a") as file:  # Write the metadata.
-        file.write(HEADER + "\n")
-    with open(global_log_file, "a") as file:
-        # Write the metadata.
-        file.write(HEADER + ",")
-        file.write(
-            "preserve_energies: " +
-            ",".join(
-                [str(energy) for energy in args.preserve_energies]) +
-            ",")
-        file.write(
-            "compress_rates: " +
-            ",".join(
-                [str(compress_rate) for compress_rate in args.compress_rates]) +
-            "\n")
-        file.write(
-            "dataset,"
-            "min_train_loss,max_train_accuracy,"
-            "min_dev_loss,max_dev_accuracy,"
-            "min_test_loss,max_test_accuracy,"
-            "execution_time,additional_info\n")
 
     if args.precision_type is PrecisionType.AMP:
         from apex import amp
@@ -678,353 +538,6 @@ if __name__ == '__main__':
         flist = ["cifar100"]
     elif args.dataset == "mnist":
         flist = ["mnist"]
-    elif args.dataset == "debug":
-        # flist = ['ItalyPowerDemand']
-        # flist = ['Lighting7']
-        # flist = ['Trace']
-        # flist = ["ToeSegmentation1"]
-        # flist = ["Plane"]
-        # flist = ["MiddlePhalanxOutlineAgeGroup"]
-        # flist = ["ECGFiveDays"]
-        # flist = ["MoteStrain"]
-        # flist = ["Cricket_Y"]
-        # flist = ["Strawberry"]
-        # flist = ["FaceFour"]
-        #         'BirdChicken', 'Car', 'CBF', 'ChlorineConcentration',
-        #         'CinC_ECG_torso', 'Coffee', 'Computers', 'Cricket_X',
-        #         'Cricket_Y', 'Cricket_Z', 'DiatomSizeReduction',
-        #         'DistalPhalanxOutlineAgeGroup', 'DistalPhalanxOutlineCorrect',
-        #         'DistalPhalanxTW', 'Earthquakes', 'ECG200', 'ECG5000',
-        #         'ECGFiveDays', 'ElectricDevices', 'FaceAll', 'FaceFour',
-        #         'FacesUCR', 'FISH', 'FordA', 'FordB', 'Gun_Point', 'Ham',
-        #         'HandOutlines', 'Haptics', 'Herring', 'InlineSkate',
-        #         'InsectWingbeatSound',
-        # flist = ['50words', 'Adiac', 'ArrowHead', 'Beef', 'BeetleFly',
-        #          'BirdChicken', 'Car', 'CBF', 'ChlorineConcentration',
-        #          'CinC_ECG_torso', 'Coffee', 'Computers']
-        # flist = ["WIFI"]
-        # flist = ["50words"]
-        # flist = ["yoga"]
-        # flist = ["Two_Patterns"]
-        # flist = ["uWaveGestureLibrary_Z"]
-        # flist = ["cifar10"]
-        # flist = ["mnist"]
-        # flist = ["zTest"]
-        # flist = ["zTest50words"]
-        # flist = ["InlineSkate"]
-        # flist = ["Adiac"]
-        # flist = ["HandOutlines"]
-        # flist = ["ztest"]
-        # flist = ["Cricket_X"]
-        # flist = ["50words"]
-        # flist = ["SwedishLeaf"]
-        flist = ['Computers', 'Beef', 'BeetleFly',
-                 'BirdChicken', 'Car', 'CBF', 'ChlorineConcentration',
-                 'CinC_ECG_torso', 'Coffee', 'Cricket_X',
-                 'Cricket_Y', 'Cricket_Z', 'DiatomSizeReduction',
-                 'DistalPhalanxOutlineAgeGroup', 'DistalPhalanxOutlineCorrect',
-                 'DistalPhalanxTW', 'Earthquakes', 'ECG200', 'ECG5000',
-                 'ECGFiveDays', 'ElectricDevices', 'FaceAll', 'FaceFour',
-                 'FacesUCR', 'FISH', 'FordA', 'FordB', 'Gun_Point', 'Ham',
-                 'HandOutlines', 'Haptics', 'Herring', 'InlineSkate',
-                 'InsectWingbeatSound', 'ItalyPowerDemand',
-                 'LargeKitchenAppliances', 'Lighting2', 'Lighting7', 'MALLAT',
-                 'Meat', 'MedicalImages', 'MiddlePhalanxOutlineAgeGroup',
-                 'MiddlePhalanxOutlineCorrect', 'MiddlePhalanxTW', 'MoteStrain',
-                 'NonInvasiveFatalECG_Thorax1', 'NonInvasiveFatalECG_Thorax2',
-                 'OliveOil', 'OSULeaf', 'PhalangesOutlinesCorrect', 'Phoneme',
-                 'Plane', 'ProximalPhalanxOutlineAgeGroup',
-                 'ProximalPhalanxOutlineCorrect', 'ProximalPhalanxTW',
-                 'RefrigerationDevices', 'ScreenType', 'ShapeletSim',
-                 'ShapesAll', 'SmallKitchenAppliances', 'SonyAIBORobotSurface',
-                 'SonyAIBORobotSurfaceII', 'StarLightCurves', 'Strawberry',
-                 'SwedishLeaf', 'Symbols', 'synthetic_control',
-                 'ToeSegmentation1', 'ToeSegmentation2', 'Trace',
-                 'Two_Patterns',
-                 'TwoLeadECG', 'uWaveGestureLibrary_X', 'uWaveGestureLibrary_Y',
-                 'uWaveGestureLibrary_Z', 'UWaveGestureLibraryAll', 'wafer',
-                 'Wine', 'WordsSynonyms', 'Worms', 'WormsTwoClass', 'yoga',
-                 'ztest']
-        # flist = ['DiatomSizeReduction',
-        #          'DistalPhalanxOutlineAgeGroup', 'DistalPhalanxOutlineCorrect',
-        #          'DistalPhalanxTW', 'Earthquakes', 'ECG200', 'ECG5000',
-        #          'ECGFiveDays', 'ElectricDevices', 'FaceAll', 'FaceFour',
-        #          'FacesUCR', 'FISH', 'FordA', 'FordB', 'Gun_Point', 'Ham',
-        #          'HandOutlines', 'Haptics', 'Herring', 'InlineSkate',
-        #          'InsectWingbeatSound', 'ItalyPowerDemand',
-        #          'LargeKitchenAppliances', 'Lighting2', 'Lighting7', 'MALLAT',
-        #          'Meat', 'MedicalImages', 'MiddlePhalanxOutlineAgeGroup',
-        #          'MiddlePhalanxOutlineCorrect', 'MiddlePhalanxTW', 'MoteStrain',
-        #          'NonInvasiveFatalECG_Thorax1', 'NonInvasiveFatalECG_Thorax2',
-        #          'OliveOil', 'OSULeaf', 'PhalangesOutlinesCorrect', 'Phoneme',
-        #          'Plane', 'ProximalPhalanxOutlineAgeGroup',
-        #          'ProximalPhalanxOutlineCorrect', 'ProximalPhalanxTW',
-        #          'RefrigerationDevices', 'ScreenType', 'ShapeletSim',
-        #          'ShapesAll', 'SmallKitchenAppliances', 'SonyAIBORobotSurface',
-        #          'SonyAIBORobotSurfaceII', 'StarLightCurves', 'Strawberry',
-        #          'SwedishLeaf', 'Symbols', 'synthetic_control',
-        #          'ToeSegmentation1', 'ToeSegmentation2', 'Trace',
-        #          'Two_Patterns',
-        #          'TwoLeadECG', 'uWaveGestureLibrary_X', 'uWaveGestureLibrary_Y',
-        #          'uWaveGestureLibrary_Z', 'UWaveGestureLibraryAll', 'wafer',
-        #          'Wine', 'WordsSynonyms', 'Worms', 'WormsTwoClass', 'yoga',
-        #          'ztest']
-    elif args.dataset == "debug0":
-        flist = ['Cricket_X',
-                 'Cricket_Y',
-                 'Cricket_Z',
-                 'DiatomSizeReduction',
-                 'DistalPhalanxOutlineAgeGroup',
-                 'DistalPhalanxOutlineCorrect',
-                 'DistalPhalanxTW',
-                 'Earthquakes',
-                 'ECG200',
-                 'ECG5000',
-                 'ECGFiveDays',
-                 'ElectricDevices',
-                 'FaceAll']
-    elif args.dataset == "debug1":
-        flist = ['FaceFour',
-                 'FacesUCR',
-                 'FISH',
-                 'FordA',
-                 'FordB',
-                 'Gun_Point',
-                 'Ham',
-                 'HandOutlines',
-                 'Haptics',
-                 'Herring',
-                 'InlineSkate',
-                 'InsectWingbeatSound']
-    elif args.dataset == "debug2":
-        flist = ['ItalyPowerDemand',
-                 'LargeKitchenAppliances',
-                 'Lighting2',
-                 'Lighting7',
-                 'MALLAT',
-                 'Meat',
-                 'MedicalImages',
-                 'MiddlePhalanxOutlineAgeGroup',
-                 'MiddlePhalanxOutlineCorrect',
-                 'MiddlePhalanxTW',
-                 'MoteStrain',
-                 'NonInvasiveFatalECG_Thorax1',
-                 'NonInvasiveFatalECG_Thorax2']
-    elif args.dataset == "debug3":
-        flist = ['OliveOil',
-                 'OSULeaf',
-                 'PhalangesOutlinesCorrect',
-                 'Phoneme',
-                 'Plane',
-                 'ProximalPhalanxOutlineAgeGroup',
-                 'ProximalPhalanxOutlineCorrect',
-                 'ProximalPhalanxTW',
-                 'RefrigerationDevices',
-                 'ScreenType']
-    elif args.dataset == "debug4":
-        flist = ['ShapeletSim',
-                 'ShapesAll',
-                 'SmallKitchenAppliances',
-                 'SonyAIBORobotSurface',
-                 'SonyAIBORobotSurfaceII',
-                 'StarLightCurves',
-                 'Strawberry',
-                 'SwedishLeaf',
-                 'Symbols',
-                 'synthetic_control']
-    elif args.dataset == "debug5":
-        flist = ['ToeSegmentation1',
-                 'ToeSegmentation2',
-                 'Trace',
-                 'Two_Patterns',
-                 'TwoLeadECG',
-                 'uWaveGestureLibrary_X',
-                 'uWaveGestureLibrary_Y',
-                 'uWaveGestureLibrary_Z',
-                 'UWaveGestureLibraryAll',
-                 'wafer',
-                 'Worms',
-                 'WormsTwoClass',
-                 'yoga']
-    elif args.dataset == "debug6":
-        flist = ['OliveOil',
-                 'SwedishLeaf',
-                 'Symbols',
-                 'synthetic_control',
-                 'ToeSegmentation1',
-                 'ToeSegmentation2',
-                 'Worms',
-                 'WormsTwoClass',
-                 'yoga',
-                 'Trace',
-                 'Two_Patterns',
-                 'TwoLeadECG',
-                 'uWaveGestureLibrary_X',
-                 'uWaveGestureLibrary_Y',
-                 'uWaveGestureLibrary_Z',
-                 'UWaveGestureLibraryAll',
-                 'wafer',
-                 'ShapeletSim',
-                 'ShapesAll',
-                 'SmallKitchenAppliances',
-                 'SonyAIBORobotSurface',
-                 'SonyAIBORobotSurfaceII',
-                 'StarLightCurves',
-                 'Strawberry',
-                 'OSULeaf',
-                 'PhalangesOutlinesCorrect',
-                 'Phoneme',
-                 'Plane',
-                 'ProximalPhalanxOutlineAgeGroup',
-                 'ProximalPhalanxOutlineCorrect',
-                 'ProximalPhalanxTW',
-                 'RefrigerationDevices',
-                 'ScreenType'
-                 ]
-    elif args.dataset == "debug7":
-        flist = ['FordB',
-                 'Gun_Point',
-                 'Ham',
-                 'HandOutlines',
-                 'Haptics',
-                 'Herring',
-                 'InlineSkate',
-                 'InsectWingbeatSound',
-                 'NonInvasiveFatalECG_Thorax1',
-                 'NonInvasiveFatalECG_Thorax2',
-                 'PhalangesOutlinesCorrect',
-                 'Phoneme',
-                 'ProximalPhalanxOutlineAgeGroup',
-                 'RefrigerationDevices',
-                 'ScreenType',
-                 'ShapeletSim',
-                 'ShapesAll',
-                 'SmallKitchenAppliances',
-                 'SonyAIBORobotSurface',
-                 'StarLightCurves',
-                 'Strawberry',
-                 'Symbols',
-                 'synthetic_control',
-                 'Trace',
-                 'Two_Patterns',
-                 'uWaveGestureLibrary_X',
-                 'uWaveGestureLibrary_Y',
-                 'uWaveGestureLibrary_Z',
-                 'UWaveGestureLibraryAll',
-                 'wafer',
-                 'Worms',
-                 'WormsTwoClass',
-                 'yoga'
-                 ]
-    elif args.dataset == "debug8":
-        flist = ["SwedishLeaf"]
-    elif args.dataset == "debug9conv1-100":
-        flist = [
-            'HandOutlines',
-            'Haptics',
-            'InlineSkate',
-            'Phoneme',
-            'ProximalPhalanxOutlineAgeGroup',
-            'ScreenType',
-            'ShapeletSim',
-            'ShapesAll',
-            'SonyAIBORobotSurface',
-            'StarLightCurves',
-            'Strawberry',
-            'uWaveGestureLibrary_Z',
-        ]
-    elif args.dataset == "debug9conv1-100-reverse":
-        flist = [
-            'HandOutlines',
-            'Haptics',
-            'InlineSkate',
-            'Phoneme',
-            'ProximalPhalanxOutlineAgeGroup',
-            'ScreenType',
-            'ShapeletSim',
-            'ShapesAll',
-            'SonyAIBORobotSurface',
-            'StarLightCurves',
-            'Strawberry',
-        ]
-        flist = reversed(flist)
-    elif args.dataset == "debug10conv1-99":
-        flist = ['Haptics',
-                 'Herring',
-                 'InlineSkate',
-                 'InsectWingbeatSound',
-                 'LargeKitchenAppliances',
-                 'Lighting2',
-                 'MALLAT',
-                 'NonInvasiveFatalECG_Thorax1',
-                 'NonInvasiveFatalECG_Thorax2',
-                 'OliveOil',
-                 'Phoneme',
-                 'RefrigerationDevices',
-                 'ScreenType',
-                 'ShapeletSim',
-                 'ShapesAll',
-                 'SmallKitchenAppliances',
-                 'StarLightCurves',
-                 'UWaveGestureLibraryAll',
-                 'Worms',
-                 'WormsTwoClass',  # start from almost the beginning
-                 'Earthquakes'
-                 ]
-    elif args.dataset == "debug10conv1-99-reverse":
-        flist = ['HandOutlines',
-                 'Haptics',
-                 'InlineSkate',
-                 'LargeKitchenAppliances',
-                 'Lighting2',
-                 'MALLAT',
-                 'NonInvasiveFatalECG_Thorax1',
-                 'NonInvasiveFatalECG_Thorax2',
-                 'OliveOil',
-                 'Phoneme',
-                 'RefrigerationDevices',
-                 'ScreenType',
-                 'ShapeletSim',
-                 'ShapesAll',
-                 'SmallKitchenAppliances',
-                 'StarLightCurves',
-                 'UWaveGestureLibraryAll',
-                 'Worms',
-                 'WormsTwoClass',  # start from almost the beginning
-                 'Earthquakes'
-                 ]
-        flist = reversed(flist)
-    elif args.dataset == "debug12":
-        flist = ['Adiac', 'ArrowHead', 'Beef', 'BeetleFly',
-                 'BirdChicken', 'Car', 'CBF', 'ChlorineConcentration',
-                 'CinC_ECG_torso', 'Coffee', 'Computers']
-    elif args.dataset == "debug13":
-        flist = ['Wine', 'WordsSynonyms', 'Worms', 'WormsTwoClass']
-    elif args.dataset == "debug14":
-        flist = ['MALLAT', 'Meat', 'MedicalImages',
-                 'MiddlePhalanxOutlineAgeGroup']
-    elif args.dataset == "debug15":
-        flist = ['Coffee', 'Computers', 'Phoneme', 'Plane', 'Car', 'Strawberry']
-    elif args.dataset == "debug16":
-        flist = ['Lighting7', 'FISH', 'FaceFour',
-                 'ProximalPhalanxOutlineCorrect']
-    elif args.dataset == "debug17":
-        flist = ['MoteStrain', 'ECGFiveDays', 'DistalPhalanxOutlineAgeGroup',
-                 'ProximalPhalanxTW']
-    elif args.dataset == "debug18":
-        flist = ["Cricket_X", "Cricket_Y", "Cricket_Z"]
-    elif args.dataset == "debug19":
-        flist = ["Strawberry", "Beef", 'ScreenType',
-                 'ShapeletSim',
-                 'ShapesAll',
-                 'SmallKitchenAppliances',
-                 'StarLightCurves',
-                 'UWaveGestureLibraryAll',
-                 'Worms',
-                 'WormsTwoClass',  # start from almost the beginning
-                 'Earthquakes']
-    elif args.dataset == 'debug20':
-        flist = ["Coffee", "Car", "ArrowHead"]
     else:
         raise AttributeError("Unknown dataset: ", args.dataset)
 
@@ -1040,15 +553,15 @@ if __name__ == '__main__':
     print("flist: ", flist)
     for dataset_name in flist:
         args.dataset_name = dataset_name
-        print("Dataset: ", dataset_name)
+        #print("Dataset: ", dataset_name)
         for preserve_energy in args.preserve_energies:
-            print("preserve energy: ", preserve_energy)
+            #print("preserve energy: ", preserve_energy)
             args.preserve_energy = preserve_energy
             for compress_rate in args.compress_rates:
-                print("compress rate: ", compress_rate)
+                #print("compress rate: ", compress_rate)
                 args.compress_rate = compress_rate
                 for noise_sigma in args.noise_sigmas:
-                    print("noise sigma: ", noise_sigma)
+                    #print("noise sigma: ", noise_sigma)
                     args.noise_sigma = noise_sigma
                     start_training = time.time()
                     try:
