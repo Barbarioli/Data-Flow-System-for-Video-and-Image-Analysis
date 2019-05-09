@@ -47,10 +47,10 @@ from cnns.nnlib.utils.general_utils import NetworkType
 
 # from memory_profiler import profile
 
-#logger = logging.getLogger(__name__)
-#logger.setLevel(logging.DEBUG)
-#consoleLog = logging.StreamHandler()
-#logger.addHandler(consoleLog)
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
+consoleLog = logging.StreamHandler()
+logger.addHandler(consoleLog)
 
 current_file_name = __file__.split("/")[-1].split(".")[0]
 
@@ -76,20 +76,20 @@ from apex.fp16_utils import FP16_Optimizer
 dir_path = os.path.dirname(os.path.realpath(__file__))
 # print("current working directory: ", dir_path)
 
-#ucr_data_folder = "TimeSeriesDatasets"
-#ucr_path = os.path.join(dir_path, os.pardir, data_folder)
-#ucr_path = os.path.join(os.pardir, os.pardir, ucr_data_folder)
+ucr_data_folder = "TimeSeriesDatasets"
+# ucr_path = os.path.join(dir_path, os.pardir, data_folder)
+ucr_path = os.path.join(os.pardir, os.pardir, ucr_data_folder)
 
-#results_folder_name = "results"
-#results_dir = os.path.join(os.getcwd(), results_folder_name)
+results_folder_name = "results"
+results_dir = os.path.join(os.getcwd(), results_folder_name)
 #print("current dir: ", os.getcwd())
-#pathlib.Path(results_dir).mkdir(parents=True, exist_ok=True)
+pathlib.Path(results_dir).mkdir(parents=True, exist_ok=True)
 # if not os.path.exists(results_dir):
 #     os.makedirs(results_dir)
 
 models_folder_name = "models"
 models_dir = os.path.join(os.getcwd(), models_folder_name)
-print("models_dir: ", models_dir)
+#print("models_dir: ", models_dir)
 pathlib.Path(models_dir).mkdir(parents=True, exist_ok=True)
 # if not os.path.exists(models_dir):
 #     os.makedirs(models_dir)
@@ -98,11 +98,11 @@ pathlib.Path(models_dir).mkdir(parents=True, exist_ok=True)
 
 args = get_args()
 
-#current_file_name = __file__.split("/")[-1].split(".")[0]
+current_file_name = __file__.split("/")[-1].split(".")[0]
 #print("current file name: ", current_file_name)
 
 if torch.cuda.is_available() and args.use_cuda:
-    print("cuda is available: ")
+    #print("cuda is available: ")
     device = torch.device("cuda")
     # torch.set_default_tensor_type('torch.cuda.FloatTensor')
 else:
@@ -114,7 +114,7 @@ def getModelPyTorch(args):
     Get the PyTorch version of the FCNN model.
     :param input_size: the length (width) of the time series.
     :param num_classes: number of output classes.
-    :param in_channels: number of channels in the input data for a convolution.
+    :param : number of channels in the input data for a convolution.
     :param out_channels: number of channels in the output of a convolution.
     :param dtype: global - the type of torch data/weights.
     :param flat_size: the size of the flat vector after the conv layers.
@@ -140,10 +140,10 @@ def getModelPyTorch(args):
 
 def readucr(filename, data_type):
     parent_path = os.path.split(os.path.abspath(dir_path))[0]
-    print("parent path: ", parent_path)
+    #print("parent path: ", parent_path)
     filepath = os.path.join(parent_path, ucr_data_folder, filename,
                             filename + "_" + data_type)
-    print("filepath: ", filepath)
+    #print("filepath: ", filepath)
     data = np.loadtxt(filepath, delimiter=',')
     Y = data[:, 0]
     X = data[:, 1:]
@@ -171,6 +171,88 @@ def getData(fname):
     x_test = x_test.reshape(x_test.shape + (1,))
 
     return x_train, y_train, x_test, y_test, batch_size, num_classes
+
+
+# @profile
+def train(model, device, train_loader, optimizer, loss_function, epoch, args):
+    """
+    Train the model.
+
+    :param model: deep learning model.
+    :param device: cpu or gpu.
+    :param train_loader: the training dataset.
+    :param optimizer: Adam, Momemntum, etc.
+    :param epoch: the current epoch number.
+    :param
+    """
+
+    model.train()
+    train_loss = 0
+    correct = 0
+    total = 0
+
+    for batch_idx, (data, target) in enumerate(train_loader):
+        # fp16 (apex) - the data is cast explicitely to fp16 via data.to() method.
+        data, target = data.to(device=device, dtype=args.dtype), target.to(
+            device=device)
+        optimizer.zero_grad()
+        output = model(data)
+        loss = loss_function(output, target)
+
+        # The cross entropy loss combines `log_softmax` and `nll_loss` in
+        # a single function.
+        # loss = F.cross_entropy(output, target)
+
+        if args.precision_type is PrecisionType.AMP:
+            """
+            https://github.com/NVIDIA/apex/tree/master/apex/amp
+            
+            Not used: at each optimization step in the training loop, 
+            perform the following:
+            Cast gradients to FP32. If a loss was scaled, descale the 
+            gradients. Apply updates in FP32 precision and copy the updated 
+            parameters to the model, casting them to FP16.
+            """
+            with amp_handle.scale_loss(loss, optimizer) as scaled_loss:
+                scaled_loss.backward()
+            # loss = optimizer.scale_loss(loss)
+
+        elif args.precision_type is PrecisionType.FP16:
+            optimizer.backward(loss)
+        elif args.precision_type is PrecisionType.FP32:
+            loss.backward()
+        else:
+            raise Exception(
+                f"Unsupported precision type for float16: {args.precision_type}")
+
+        optimizer.step()
+
+        # print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
+        #     epoch, batch_idx * len(data), len(train_loader.dataset),
+        #            100.0 * batch_idx / len(train_loader), loss.item()))
+
+        train_loss += loss.item()
+        _, predicted = output.max(1)
+        total += target.size(0)
+        correct += predicted.eq(target).sum().item()
+
+        if args.log_conv_size is True:
+            with open(additional_log_file, "a") as file:
+                file.write("\n")
+
+        if args.is_progress_bar:
+            progress_bar(total, len(train_loader.dataset), epoch=epoch,
+                         msg="Train Loss: %.3f | Train Acc: %.3f%% (%d/%d)" %
+                             (train_loss / total, 100. * correct / total,
+                              correct,
+                              total))
+
+    # Test loss for the whole dataset.
+    train_loss /= total
+    accuracy = 100. * correct / total
+
+    return train_loss, accuracy
+
 
 def test(model, device, test_loader, loss_function, args, epoch=None):
     """
@@ -242,6 +324,13 @@ def test(model, device, test_loader, loss_function, args, epoch=None):
 
         return test_loss, accuracy
 
+
+def save_checkpoint(state, is_best, filename='checkpoint.pth.tar'):
+    torch.save(state, filename)
+    if is_best:
+        shutil.copyfile(filename, 'model_best.pth.tar')
+
+
 # @profile
 def main(args):
     """
@@ -249,17 +338,48 @@ def main(args):
 
     :param dataset_name: the name of the dataset from UCR.
     """
-
+    is_debug = args.is_debug
     dataset_name = args.dataset_name
     preserve_energy = args.preserve_energy
     compress_rate = args.compress_rate
+    """
+    DATASET_HEADER = HEADER + ",dataset," + str(dataset_name) + \
+                     "-current-preserve-energy-" + str(preserve_energy) + "\n"
+    
+    if args.test_compress_rates:
+        dataset_log_file = os.path.join(results_folder_name,
+                                        f"{args.dataset}-dataset-compress-rates.log")
+    else:
+        dataset_log_file = os.path.join(
+            results_folder_name,
+            get_log_time() + "-dataset-" + str(dataset_name) + \
+            "-preserve-energy-" + str(preserve_energy) + \
+            "-compress-rate-" + str(compress_rate) + \
+            ".log")
+        with open(dataset_log_file, "a") as file:
+            # Write the metadata.
+            file.write(DATASET_HEADER)
+            # Write the header with the names of the columns.
+            file.write(
+                "epoch,train_loss,train_accuracy,dev_loss,dev_accuracy,"
+                "test_loss,test_accuracy,epoch_time,learning_rate,"
+                "train_time,test_time,compress_rate\n")
 
+    # with open(os.path.join(results_dir, additional_log_file), "a") as file:
+    #     # Write the metadata.
+    #     file.write(DATASET_HEADER)
+
+    with open(os.path.join(results_dir, mem_log_file), "a") as file:
+        # Write the metadata.
+        file.write(DATASET_HEADER)
+    """
     torch.manual_seed(args.seed)
+    
     optimizer_type = args.optimizer_type
     scheduler_type = args.scheduler_type
     loss_type = args.loss_type
     loss_reduction = args.loss_reduction
-
+    
     use_cuda = args.use_cuda
     device = torch.device("cuda" if use_cuda else "cpu")
     tensor_type = args.tensor_type
@@ -284,7 +404,7 @@ def main(args):
         else:
             raise Exception(f"Unknown tensor type: {tensor_type}")
         torch.set_default_tensor_type(cpu_type)
-
+    
     train_loader, dev_loader, test_loader = None, None, None
     if dataset_name is "cifar10" or dataset_name is "cifar100":
         train_loader, test_loader, _, _ = get_cifar(args, dataset_name)
@@ -294,7 +414,7 @@ def main(args):
         train_loader, test_loader, dev_loader = get_ucr(args)
     else:
         raise ValueError(f"Unknown dataset: {dataset_name}")
-
+    
     model = getModelPyTorch(args=args)
     model.to(device)
     # model = torch.nn.DataParallel(model)
@@ -344,12 +464,12 @@ def main(args):
         scheduler = MultiStepLR(optimizer=optimizer, milestones=[150, 250])
     else:
         raise Exception(f"Unknown scheduler type: {scheduler_type}")
-
+    
     if args.precision_type is PrecisionType.FP16:
-        """
-        amp_handle: tells it where back-propagation occurs so that it can 
-        properly scale the loss and clear internal per-iteration state.
-        """
+        
+        #amp_handle: tells it where back-propagation occurs so that it can 
+        #properly scale the loss and clear internal per-iteration state.
+        
         # amp_handle = amp.init()
         # optimizer = amp_handle.wrap_optimizer(optimizer)
 
@@ -358,17 +478,17 @@ def main(args):
                                    static_loss_scale=args.static_loss_scale,
                                    dynamic_loss_scale=args.dynamic_loss_scale,
                                    verbose=True)
-
+    """
     # max = choose the best model.
     min_train_loss = min_test_loss = min_dev_loss = sys.float_info.max
     max_train_accuracy = max_test_accuracy = max_dev_accuracy = 0.0
-
+    """
     # Optionally resume from a checkpoint.
     if args.resume:
         # Use a local scope to avoid dangling references.
         def resume():
             if os.path.isfile(args.resume):
-                print("=> loading checkpoint '{}'".format(args.resume))
+                #print("=> loading checkpoint '{}'".format(args.resume))
                 checkpoint = torch.load(args.resume,
                                         map_location=lambda storage,
                                                             loc: storage.cuda(
@@ -378,15 +498,15 @@ def main(args):
                 model.load_state_dict(checkpoint['state_dict'])
                 # An FP16_Optimizer instance's state dict internally stashes the master params.
                 optimizer.load_state_dict(checkpoint['optimizer'])
-                print("=> loaded checkpoint '{}' (epoch {})"
-                      .format(args.resume, checkpoint['epoch']))
+                #print("=> loaded checkpoint '{}' (epoch {})"
+                #      .format(args.resume, checkpoint['epoch']))
                 return max_train_accuracy
             else:
                 print("=> no checkpoint found at '{}'".format(args.resume))
                 return 0.0
 
         max_train_accuracy = resume()
-
+    ""
     if loss_reduction is LossReduction.ELEMENTWISE_MEAN:
         reduction_function = "mean"
     elif loss_reduction is LossReduction.SUM:
@@ -400,7 +520,7 @@ def main(args):
         loss_function = torch.nn.NLLLoss(reduction=reduction_function)
     else:
         raise Exception(f"Unknown loss type: {loss_type}")
-
+    """
     if args.visulize is True:
         start_visualize_time = time.time()
         test_loss, test_accuracy = test(
@@ -418,15 +538,16 @@ def main(args):
                     args.compress_rate) + "\n")
         return
 
-    """
     dataset_start_time = time.time()
     dev_loss = min_dev_los = sys.float_info.max
     dev_accuracy = 0.0
-    
     for epoch in range(args.start_epoch, args.epochs + 1):
         epoch_start_time = time.time()
         # print("\ntrain:")
-        #train_start_time = time.time()
+        if args.log_conv_size is True:
+            with open(additional_log_file, "a") as file:
+                file.write(str(args.compress_rate) + ",")
+        train_start_time = time.time()
         train_loss, train_accuracy = train(
             model=model, device=device, train_loader=train_loader, args=args,
             optimizer=optimizer, loss_function=loss_function, epoch=epoch)
@@ -508,22 +629,44 @@ def main(args):
             max_dev_accuracy) + "," + str(min_test_loss) + "," + str(
             max_test_accuracy) + "," + str(
             time.time() - dataset_start_time) + "\n")
+    test_time = time.time()
+    test(model = model, device = device, test_loader = test_loader, loss_function = loss_function, args = args)
+    print("test time", time.time() - test_time)
     """
-    def inference_function(model, data):
-        test_time = time.time()
-        print("test time", time.time() - test_time)
-
-    
-    
-
 if __name__ == '__main__':
-   # print("start learning!")
-   # start_time = time.time()
+    print("start")
+    start_time = time.time()
     hostname = socket.gethostname()
     cuda_visible_devices = os.environ['CUDA_VISIBLE_DEVICES']
-   # global_log_file = os.path.join(results_folder_name,
-    #                               get_log_time() + "-ucr-fcnn.log")
+    global_log_file = os.path.join(results_folder_name,
+                                   get_log_time() + "-ucr-fcnn.log")
     args_str = args.get_str()
+    """
+    HEADER = "hostname," + str(
+        hostname) + ",timestamp," + get_log_time() + "," + str(
+        args_str) + ",cuda_visible_devices," + str(cuda_visible_devices)
+    with open(additional_log_file, "a") as file:  # Write the metadata.
+        file.write(HEADER + "\n")
+    with open(global_log_file, "a") as file:
+        # Write the metadata.
+        file.write(HEADER + ",")
+        file.write(
+            "preserve_energies: " +
+            ",".join(
+                [str(energy) for energy in args.preserve_energies]) +
+            ",")
+        file.write(
+            "compress_rates: " +
+            ",".join(
+                [str(compress_rate) for compress_rate in args.compress_rates]) +
+            "\n")
+        file.write(
+            "dataset,"
+            "min_train_loss,max_train_accuracy,"
+            "min_dev_loss,max_dev_accuracy,"
+            "min_test_loss,max_test_accuracy,"
+            "execution_time,additional_info\n")
+    """
 
     if args.precision_type is PrecisionType.AMP:
         from apex import amp
@@ -541,16 +684,12 @@ if __name__ == '__main__':
     else:
         raise AttributeError("Unknown dataset: ", args.dataset)
 
-    if torch.cuda.is_available():
-        print("CUDA is available")
-        torch.cuda.empty_cache()
-    else:
-        print("CUDA is not available")
+    torch.cuda.empty_cache()
 
     # flist = sorted(flist, key=lambda s: s.lower())
     # flist = flist[3:]  # start from Beef
     # reversed(flist)
-    print("flist: ", flist)
+    #print("flist: ", flist)
     for dataset_name in flist:
         args.dataset_name = dataset_name
         #print("Dataset: ", dataset_name)
@@ -563,13 +702,13 @@ if __name__ == '__main__':
                 for noise_sigma in args.noise_sigmas:
                     #print("noise sigma: ", noise_sigma)
                     args.noise_sigma = noise_sigma
-                    start_training = time.time()
+                    
                     try:
                         main(args=args)
                     except RuntimeError as err:
                         print(f"ERROR: {dataset_name}. "
                               "Details: " + str(err))
                         traceback.print_tb(err.__traceback__)
-                    print("elapsed time (sec): ", time.time() - start_training)
+    
 
     print("total elapsed time (sec): ", time.time() - start_time)
