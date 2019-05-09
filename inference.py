@@ -47,6 +47,7 @@ from cnns.nnlib.utils.general_utils import NetworkType
 
 # from memory_profiler import profile
 
+
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 consoleLog = logging.StreamHandler()
@@ -330,7 +331,43 @@ def save_checkpoint(state, is_best, filename='checkpoint.pth.tar'):
     if is_best:
         shutil.copyfile(filename, 'model_best.pth.tar')
 
+def inference(model, device, test_loader, args):
+    """
+    Test the model and return test loss and accuracy.
 
+    :param model: deep learning model.
+    :param device: cpu or gpu.
+    :param test_loader: the input data..
+    :return: accuracy and inference time.
+    """
+    model.eval()
+    correct = 0
+    total = 0
+
+    inference_time = 0
+    start = torch.cuda.Event(enable_timing=True)
+    end = torch.cuda.Event(enable_timing=True)
+
+    with torch.no_grad():
+        torch.cuda.empty_cache()
+        for batch_idx, (data, target) in enumerate(test_loader):
+            data, target = data.to(device=device, dtype=args.dtype), target.to(
+                device)
+            start.record()
+            output = model(data)
+            end.record()
+            torch.cuda.synchronize()
+            inference_time += start.elapsed_time(end)
+            _, predicted = output.max(1)
+            total += target.size(0)
+            correct += predicted.eq(target).sum().item()
+            
+        accuracy = 100. * correct / total    
+        inference_time = inference_time / total
+        with open("inference_time", "a") as file:        
+                file.write("-compress-rate- " + str(args.compress_rate) + "accuracy " + str(accuracy) + " inference_time_milliseconds " \
+                    + str(inference_time) + "\n")
+    print(str(inference_time), str(accuracy), str(args.compress_rate))
 # @profile
 def main(args):
     """
@@ -633,13 +670,16 @@ def main(args):
     test(model = model, device = device, test_loader = test_loader, loss_function = loss_function, args = args)
     print("test time", time.time() - test_time)
     """
+    args.compress_rate = 75
+    inference(model = model, device = device, test_loader = test_loader, args = args)
+
 if __name__ == '__main__':
     print("start")
     start_time = time.time()
     hostname = socket.gethostname()
     cuda_visible_devices = os.environ['CUDA_VISIBLE_DEVICES']
-    global_log_file = os.path.join(results_folder_name,
-                                   get_log_time() + "-ucr-fcnn.log")
+    #global_log_file = os.path.join(results_folder_name,
+    #                               get_log_time() + "-ucr-fcnn.log")
     args_str = args.get_str()
     """
     HEADER = "hostname," + str(
@@ -703,12 +743,12 @@ if __name__ == '__main__':
                     #print("noise sigma: ", noise_sigma)
                     args.noise_sigma = noise_sigma
                     
-                    try:
+                    try:                        
                         main(args=args)
                     except RuntimeError as err:
                         print(f"ERROR: {dataset_name}. "
                               "Details: " + str(err))
                         traceback.print_tb(err.__traceback__)
     
-
+    
     print("total elapsed time (sec): ", time.time() - start_time)
