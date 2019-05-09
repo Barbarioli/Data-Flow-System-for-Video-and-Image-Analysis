@@ -16,11 +16,14 @@ import socket
 import time
 import shutil
 import torch
+import torchvision
+import torchvision.datasets as datasets
+from torchvision import transforms
 import torch.optim as optim
 from torch.optim.lr_scheduler import \
     ReduceLROnPlateau as ReduceLROnPlateauPyTorch
 from torch.optim.lr_scheduler import MultiStepLR
-
+from multiprocessing import Process, JoinableQueue, Pool, Manager, cpu_count
 sys.path.insert(0, "/home/barbarioli/Research/bandlimited-cnns-master")
 
 from cnns.nnlib.pytorch_layers.AdamFloat16 import AdamFloat16
@@ -44,6 +47,34 @@ from cnns.nnlib.pytorch_architecture.resnet2d import resnet18
 from cnns.nnlib.pytorch_architecture.densenet import densenet_cifar
 from cnns.nnlib.pytorch_architecture.fcnn import FCNNPytorch
 from cnns.nnlib.utils.general_utils import NetworkType
+
+####Pipeline
+
+from skimage.io import imread
+from skimage.transform import resize
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import matplotlib.image as mpimg
+import seaborn as sns
+#import cv2
+from multiprocessing import Process, JoinableQueue, Pool, Manager, cpu_count
+from time import sleep
+import time
+import sys
+import os
+import sys
+import pathlib
+import logging
+import traceback 
+import socket
+import time
+import shutil
+import torch
+import torch.optim as optim
+from torch.optim.lr_scheduler import \
+    ReduceLROnPlateau as ReduceLROnPlateauPyTorch
+from torch.optim.lr_scheduler import MultiStepLR
 
 # from memory_profiler import profile
 
@@ -172,7 +203,6 @@ def getData(fname):
     x_test = x_test.reshape(x_test.shape + (1,))
 
     return x_train, y_train, x_test, y_test, batch_size, num_classes
-
 
 # @profile
 def train(model, device, train_loader, optimizer, loss_function, epoch, args):
@@ -331,7 +361,7 @@ def save_checkpoint(state, is_best, filename='checkpoint.pth.tar'):
     if is_best:
         shutil.copyfile(filename, 'model_best.pth.tar')
 
-def inference(model, device, test_loader, args):
+def inference(model, device, data, args):
     """
     Test the model and return test loss and accuracy.
 
@@ -341,8 +371,8 @@ def inference(model, device, test_loader, args):
     :return: accuracy and inference time.
     """
     model.eval()
-    correct = 0
-    total = 0
+    #correct = 0
+    #total = 0
 
     inference_time = 0
     start = torch.cuda.Event(enable_timing=True)
@@ -350,25 +380,76 @@ def inference(model, device, test_loader, args):
 
     with torch.no_grad():
         torch.cuda.empty_cache()
-        for batch_idx, (data, target) in enumerate(test_loader):
-            data, target = data.to(device=device, dtype=args.dtype), target.to(
-                device)
-            start.record()
-            output = model(data)
-            end.record()
-            torch.cuda.synchronize()
-            inference_time += start.elapsed_time(end)
-            _, predicted = output.max(1)
-            total += target.size(0)
-            correct += predicted.eq(target).sum().item()
+        start.record()
+        output = model(data)
+        end.record()
+        torch.cuda.synchronize()
+        inference_time += start.elapsed_time(end)
+            #_, predicted = output.max(1)
+            #total += target.size(0)
+            #correct += predicted.eq(target).sum().item()
             
-        accuracy = 100. * correct / total    
-        inference_time = inference_time / total
+        #accuracy = 100. * correct / total    
+        inference_time = inference_time/args.test_batch_size
         with open("inference_time", "a") as file:        
-                file.write("-compress-rate- " + str(args.compress_rate) + "accuracy " + str(accuracy) + " inference_time_milliseconds " \
-                    + str(inference_time) + "\n")
-    print(str(inference_time), str(accuracy), str(args.compress_rate))
+                file.write(str(inference_time) + "\n")
+    print(str(inference_time), str(args.compress_rate))
 # @profile
+
+class image_loader(object):
+  """Load images from a list of paths to a queue in order to be processed.
+  
+  Args:
+    data: list of paths to all images.
+    queue: queue to where the loaded images will be added.
+  
+  """
+  
+  def __init__(self, data, queue):
+    self.queue = queue
+    self.length = len(data)
+    self.data = data
+    self.i = 0
+    
+    
+  def __iter__(self):
+    return self
+  
+  
+  def __next__(self):
+
+    if self.i < self.length:
+      self.queue.put(self.data[self.i])
+      self.i += 1
+      return self.i
+    
+    else:
+      raise StopIteration
+
+class inf(object):
+  """Perform inference on a dataset
+  
+  Args:
+    input_queue: input queue with the images to be preprocessed.
+    
+  """
+  
+  def __init__(self, input_queue):
+    self.input_queue = input_queue
+    self.compress_rate = 0
+  def __iter__(self):
+    return self
+  
+  def __next__(self):
+    if self.input_queue.qsize() > 1 and args.compress_rate <= 75:
+      self.compress_rate += 1
+      args.compress_rate = self.compress_rate
+      inference(model = model, device = device, data = test_loader, args = args)
+    
+    else:
+      inference(model = model, device = device, data = test_loader, args = args)
+      
+
 def main(args):
     """
     The main training.
@@ -670,8 +751,14 @@ def main(args):
     test(model = model, device = device, test_loader = test_loader, loss_function = loss_function, args = args)
     print("test time", time.time() - test_time)
     """
-    args.compress_rate = 75
-    inference(model = model, device = device, test_loader = test_loader, args = args)
+    data = []
+    for idx, (data_input, label) in enumerate(test_loader):
+        data_input = data_input.to(device=device, dtype=args.dtype)
+        data.append(data_input)
+    
+    #queue_1 = JoinableQueue()
+
+    inference(model = model, device = device, data = data[0], args = args)
 
 if __name__ == '__main__':
     print("start")
