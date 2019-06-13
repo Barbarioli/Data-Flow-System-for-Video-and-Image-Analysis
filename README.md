@@ -6,7 +6,7 @@ Video and image analysis using deep learning has become ubiquitous across many d
 
 * Python 3.6
 * [PyTorch 1.1 and Torchvision](https://pytorch.org)
-
+* [gdown.pl](https://github.com/circulosmeos/gdown.pl)
 
 ### Python libraries:
 
