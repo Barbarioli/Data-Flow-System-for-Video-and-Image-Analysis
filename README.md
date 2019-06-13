@@ -32,7 +32,7 @@ Sample videos used in the experiments can be downloaded running the `download_vi
 
 The image classification requires three arguments: the dataset, the checkpoint with the trained model and the output display boolean. The following is an example using one of the checkpoints provided:
 
-`inference.py --dataset='cifar10 --resume='' --output_display='False'`
+`inference.py --dataset='cifar10 --resume='cifar_10_resnet.tar' --output_display='False'`
 
 
 ### Object detection:
