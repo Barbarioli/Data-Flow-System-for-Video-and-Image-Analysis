@@ -23,6 +23,7 @@ import torch.optim as optim
 from torch.optim.lr_scheduler import \
     ReduceLROnPlateau as ReduceLROnPlateauPyTorch
 from torch.optim.lr_scheduler import MultiStepLR
+from multiprocessing import Process, JoinableQueue, Pool, Manager, cpu_count
 sys.path.insert(0, "/home/barbarioli/Research/bandlimited-cnns-master")
 
 from cnns.nnlib.pytorch_layers.AdamFloat16 import AdamFloat16
@@ -57,7 +58,7 @@ import matplotlib.pyplot as plt
 import matplotlib.image as mpimg
 import seaborn as sns
 #import cv2
-from torch.multiprocessing import Process, Queue, Pool, Manager, Event
+from multiprocessing import Process, Queue, Pool, Manager
 from time import sleep
 import time
 import sys
@@ -392,7 +393,7 @@ def inference(model, device, data, args):
         inference_time = inference_time/args.test_batch_size
         with open("inference_time", "a") as file:        
                 file.write(str(inference_time) + "\n")
-    print(str(inference_time), str(args.compress_rate))
+    print("inference time: " + str(inference_time),"compression rate: " + str(args.compress_rate))
 # @profile
 
 class image_loader(object):
@@ -409,7 +410,8 @@ class image_loader(object):
     self.length = len(data)
     self.data = data
     self.i = 0
-
+    
+    
   def __iter__(self):
     return self
   
@@ -418,9 +420,11 @@ class image_loader(object):
 
     if self.i < self.length:
       self.queue.put(self.data[self.i])
-      self.i += 1
-      print(self.i)      
-      return self.i
+      self.i += 1      
+      #print('queue size: ' + str(self.queue.qsize()))
+      #sleep(0.5)
+      return
+    
     else:
       raise StopIteration
 
@@ -444,14 +448,14 @@ class inf(object):
   def __next__(self):
     image = self.input_queue.get()
     image = image.to(device=device, dtype=args.dtype)
-    if self.input_queue.qsize() > 1 and self.args.compress_rate <= 75:
+    if self.input_queue.qsize() > 1 and self.args.compress_rate <= 50:
         self.compress_rate += 1
         self.args.compress_rate = self.compress_rate
-        print('compressed inference')
+        print('increase compression')
         inference(model = self.model, device = self.device, data = image.cuda(), args = self.args)
         return
     else:
-        print('regular inference')
+        print('maintain compression')
         inference(model = self.model, device = self.device, data = image.cuda(), args = self.args)
         return
 
@@ -758,18 +762,22 @@ def main(args):
     """
     data = []
     for idx, (data_input, label) in enumerate(test_loader):
+        #data_input = data_input.to(device=device, dtype=args.dtype)
         data_input.numpy()
         data.append(data_input)
-    """
+    
+    #inference(model = model, device = device, data = data[0], args = args)        
+
     queue_1 = Queue()
-    item_1 = iter(image_loader(data, queue_1))
-    item_2 = iter(inf(queue_1, model, device, args))
-    p_1 = Process(target = next(item_1), daemon=True)
-    p_2 = Process(target = next(item_2), daemon=True)
+    item_1 = image_loader(data, queue_1)
+    item_2 = inf(queue_1, model, device, args)
+    p_1 = Process(target = next, args = item_1, daemon=True)
+    p_2 = Process(target = next, args = item_2, daemon=True)
     p_2.start()
     p_1.start()
-    """
-    inference(model = model, device = device, data = data[0], args = args)
+    
+
+    
 
 if __name__ == '__main__':
     print("start")
