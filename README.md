@@ -1,6 +1,6 @@
 # Data Flow System for Video and Image Analysis
 
-Video and image analysis using deep learning has become ubiquitous across many different applications. However, traditional architectures are optimized for accuracy regardless of their inference time. This characteristic can potentially impair real world applications that have either computational resources limitations or time sensitivity. We propose a data flow system composed of different operators that allows for the inference time to be automatically adjusted according to the data being analysed. It gracefully adjusts its accuracy (images) and frame sampling rate (video) in order to maintain a smooth output flow.
+Video and image analysis using deep learning has become ubiquitous across many different applications. However, traditional architectures are optimized for accuracy regardless of their inference time. This characteristic can potentially impair real world applications that have either computational resources limitations or time sensitivity. We propose a data flow system composed of different operators that allows for the inference time to be automatically adjusted according to the data being analyzed. It gracefully adjusts its accuracy (images) and frame sampling rate (video) in order to maintain a smooth output flow.
 
 ## Installation
 
