@@ -39,4 +39,4 @@ The image classification requires three arguments: the dataset, the checkpoint w
 
 The object detection only requires three arguments: the input video file path, the output video file path and the output display boolean. The following is an example using one of the videos downloaded in the installation step:
 
-`detection.py --input='input_video/Samsung_UHD_Soccer_Barcelona_Atletico_Madrid.ts' --output='output_video/soccer_output.avi'  --display_output='False'`
+`detection.py --input='soccer.ts' --output='output_video/soccer_output.avi'  --display_output='False'`
