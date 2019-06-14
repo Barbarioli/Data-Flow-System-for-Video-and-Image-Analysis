@@ -1,10 +1,9 @@
 #Loading packages
+#Loading packages
 
 from models import *
 from utils import *
-
-import cv2
-
+import argparse
 import os, sys, time, datetime, random
 import torch
 from torch.utils.data import DataLoader
@@ -203,3 +202,34 @@ class video_constructor(object):
     
     else:
       raise StopIteration
+      
+def main(input, output, display_output = False):
+  
+  queue_1 = JoinableQueue()
+  queue_2 = JoinableQueue()
+  queue_3 = JoinableQueue()
+  queue_1.put(0)
+  
+  fourcc = cv2.VideoWriter_fourcc(*'XVID')
+  video = cv2.VideoWriter(output,fourcc,1, (432, 288))
+  
+  item = frame_extractor(input, queue_1, queue_2)
+  item_2 = detector(queue_2, queue_1, queue_3)
+  item_3 = video_constructor(queue_3, video)
+  while True:
+    next(item)
+    next(item_2)
+    next(item_3)
+  video.release()
+
+
+if __name__ == '__main__':
+  
+  parser = argparse.ArgumentParser()
+  parser.add_argument("input", type=str, help="path to the input file")
+  parser.add_argument("output", type=str, help="path to the output video file")
+  parser.add_argument("display_output", type=bool, help="boolean to display the output", default=0)
+  args = parser.parse_args()
+  
+  main(args.input, args.ouput, args.display_output)
+
