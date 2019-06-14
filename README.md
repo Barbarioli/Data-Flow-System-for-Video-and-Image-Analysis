@@ -30,13 +30,13 @@ Sample videos used in the experiments can be downloaded running the `download_vi
 
 ### Image classification:
 
-The image classification requires three arguments: the dataset, the checkpoint with the trained model and the output display boolean. The following is an example using one of the checkpoints provided:
+The image classification requires three arguments: the dataset, the checkpoint with the trained model and the display output boolean. The following is an example using one of the checkpoints provided:
 
-`inference.py --dataset='cifar10 --resume='' --output_display='False'`
+`inference.py --dataset='cifar10 --resume='cifar_10_resnet.tar' --display_output='False'`
 
 
 ### Object detection:
 
-The object detection only requires three arguments: the input video file path, the output video file path and the output display boolean. The following is an example using one of the videos downloaded in the installation step:
+The object detection requires three arguments: the input video file path, the output video file path and the output display boolean. The following is an example using one of the videos downloaded in the installation step:
 
-`detection.py --input='input_video/Samsung_UHD_Soccer_Barcelona_Atletico_Madrid.ts' --output='output_video/soccer_output.avi'  --display_output='False'`
+`detection.py --input='soccer.ts' --output='output_video/soccer_output.avi'  --display_output='False'`
